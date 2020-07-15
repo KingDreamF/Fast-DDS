@@ -38,6 +38,7 @@ using namespace eprosima::fastdds::rtps;
 #define GET_PID _getpid
 #else
 #define GET_PID getpid
+#include <sys/statvfs.h>
 #endif
 
 static uint16_t g_default_port = 0;
@@ -92,19 +93,19 @@ public:
 
     static constexpr uint32_t TEST_MAX_NOTIFICATIONS = 3;
 
-    void wait_test(int id, 
+    void wait_test(int id,
         SharedMemSegment::mutex& mutex,
         SharedMemSegment::condition_variable& cv,
         bool* condition,
         std::atomic<uint32_t>& notifications_counter,
         boost::posix_time::milliseconds time_out)
     {
-        std::thread thread_wait([&] 
+        std::thread thread_wait([&]
             {
                 std::unique_lock<SharedMemSegment::mutex> lock(mutex);
 
                 while(notifications_counter.load() < TEST_MAX_NOTIFICATIONS)
-                {                                   
+                {
                     boost::system_time const timeout =
                         boost::get_system_time()+ time_out;
 
@@ -122,9 +123,9 @@ public:
                     {
                         std::cout << "P" << id << " wait timeout!" << std::endl;
                     }
-                } 
+                }
             });
-        
+
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
         thread_wait.join();
@@ -452,15 +453,15 @@ TEST_P(SHMRingBufferMultiThread, multiple_writers_listeners)
 TEST_F(SHMCondition, wait_notify)
 {
     SharedMemSegment::condition_variable cv;
-    SharedMemSegment::mutex mutex;  
-    bool condition = false;  
+    SharedMemSegment::mutex mutex;
+    bool condition = false;
 
     std::thread thread_wait([&]
         {
             std::unique_lock<SharedMemSegment::mutex> lock(mutex);
-            cv.wait(lock, [&] 
-                { 
-                    return condition; 
+            cv.wait(lock, [&]
+                {
+                    return condition;
                 });
         });
 
@@ -468,7 +469,7 @@ TEST_F(SHMCondition, wait_notify)
 
     {
         std::lock_guard<SharedMemSegment::mutex> lock(mutex);
-        condition = true;  
+        condition = true;
     }
 
     cv.notify_one();
@@ -488,7 +489,7 @@ TEST_F(SHMCondition, robust_condition_fix_glibc_deadlock)
         std::atomic<uint32_t> notify_count[2];
         SharedMemSegment::mutex mutex;
         SharedMemSegment::condition_variable cv;
-        bool condition;                
+        bool condition;
     };
 
     auto p1 = fork();
@@ -500,49 +501,49 @@ TEST_F(SHMCondition, robust_condition_fix_glibc_deadlock)
             printf("p2 go!\n");
             //P2
             boost::interprocess::shared_memory_object::remove("robust_condition_fix_test");
-            boost::interprocess::managed_shared_memory shm(boost::interprocess::create_only, 
+            boost::interprocess::managed_shared_memory shm(boost::interprocess::create_only,
                 "robust_condition_fix_test", 1024 + sizeof(SharedSegment));
 
             auto shared_segment = shm.construct<SharedSegment>("shared_segment")();
             shared_segment->notify_count[0].exchange(0);
             shared_segment->notify_count[1].exchange(0);
-    
-            wait_test(2, shared_segment->mutex, 
-                shared_segment->cv, 
-                &shared_segment->condition, 
+
+            wait_test(2, shared_segment->mutex,
+                shared_segment->cv,
+                &shared_segment->condition,
                 shared_segment->notify_count[1],
                 boost::posix_time::milliseconds(60*1000));
         }
         else //P1
         {
             std::this_thread::sleep_for(std::chrono::seconds(1));
-            printf("p1 go!\n");            
+            printf("p1 go!\n");
 
             // Kill p2
             ASSERT_EQ(0, system((std::string("kill -9 ") + std::to_string(p2)).c_str()));
-            printf("p2 killed!\n");            
+            printf("p2 killed!\n");
 
-            boost::interprocess::managed_shared_memory shm(boost::interprocess::open_only, 
+            boost::interprocess::managed_shared_memory shm(boost::interprocess::open_only,
                 "robust_condition_fix_test");
 
             auto shared_segment = shm.find<SharedSegment>("shared_segment").first;
 
             // P2 died without notifications
             ASSERT_EQ(shared_segment->notify_count[1].load(), 0u);
-    
-            wait_test(1, shared_segment->mutex, 
-                shared_segment->cv, 
-                &shared_segment->condition, 
+
+            wait_test(1, shared_segment->mutex,
+                shared_segment->cv,
+                &shared_segment->condition,
                 shared_segment->notify_count[0],
                 boost::posix_time::milliseconds(500));
-        }            
+        }
     }
     else // P0
     {
         std::this_thread::sleep_for(std::chrono::seconds(2));
         printf("p0 go!\n");
 
-        boost::interprocess::managed_shared_memory shm(boost::interprocess::open_only, 
+        boost::interprocess::managed_shared_memory shm(boost::interprocess::open_only,
                 "robust_condition_fix_test");
 
         auto shared_segment = shm.find<SharedSegment>("shared_segment").first;
@@ -551,9 +552,9 @@ TEST_F(SHMCondition, robust_condition_fix_glibc_deadlock)
         {
             {
                 std::unique_lock<boost::interprocess::interprocess_mutex> lock(shared_segment->mutex);
-                shared_segment->condition = true;            
-            }        
-            shared_segment->cv.notify_all();        
+                shared_segment->condition = true;
+            }
+            shared_segment->cv.notify_all();
 
             // Wait until P1 receives the last notification
             while(shared_segment->notify_count[0].load() < i+1)
@@ -656,7 +657,7 @@ TEST_F(SHMCondition, fifo_policy)
     threads.emplace_back(std::thread(wait_lambda, 1, now + boost::posix_time::seconds(3600)));
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     threads.emplace_back(std::thread(wait_lambda, 2, now + boost::posix_time::seconds(3600)));
-    
+
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     {
@@ -664,7 +665,7 @@ TEST_F(SHMCondition, fifo_policy)
         condition = true;
     }
 
-    
+
     ASSERT_EQ(exit_order.size(), 0u);
     cv.notify_one();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -947,8 +948,8 @@ TEST_F(SHMTransportTests, port_mutex_deadlock_recover)
 {
     const std::string domain_name("SHMTests");
 
-    SharedMemManager shared_mem_manager(domain_name);
-    SharedMemGlobal* shared_mem_global = shared_mem_manager.global_segment();
+    auto shared_mem_manager = SharedMemManager::create(domain_name);
+    SharedMemGlobal* shared_mem_global = shared_mem_manager->global_segment();
     MockPortSharedMemGlobal port_mocker;
 
     port_mocker.remove_port_mutex(domain_name, 0);
@@ -985,16 +986,16 @@ TEST_F(SHMTransportTests, port_lock_read_exclusive)
 {
     const std::string domain_name("SHMTests");
 
-    SharedMemManager shared_mem_manager(domain_name);
+    auto shared_mem_manager = SharedMemManager::create(domain_name);
 
-    shared_mem_manager.remove_port(0);
+    shared_mem_manager->remove_port(0);
 
-    auto port = shared_mem_manager.open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
-    ASSERT_THROW(shared_mem_manager.open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive),
-        std::exception);
+    auto port = shared_mem_manager->open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
+    ASSERT_THROW(shared_mem_manager->open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive),
+            std::exception);
 
     port.reset();
-    port = shared_mem_manager.open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
+    port = shared_mem_manager->open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
 }
 
 TEST_F(SHMTransportTests, robust_exclusive_lock)
@@ -1008,9 +1009,11 @@ TEST_F(SHMTransportTests, robust_exclusive_lock)
 
     // A second lock fail
     ASSERT_THROW(std::make_shared<RobustExclusiveLock>(lock_name), std::exception);
+    ASSERT_TRUE(RobustExclusiveLock::is_locked(lock_name));
 
     // Remove lock
     el1.reset();
+    ASSERT_FALSE(RobustExclusiveLock::is_locked(lock_name));
 
     bool was_created;
     el1 = std::make_shared<RobustExclusiveLock>(lock_name, &was_created);
@@ -1081,7 +1084,7 @@ TEST_F(SHMTransportTests, robust_shared_lock)
 
     sl1.reset();
     new_lock.reset();
-    
+
     // The resource has been removed
     ASSERT_FALSE(RobustSharedLock::remove(lock_name.c_str()));
 
@@ -1100,18 +1103,149 @@ TEST_F(SHMTransportTests, robust_shared_lock)
     ASSERT_FALSE(RobustSharedLock::remove(lock_name.c_str()));
 }
 
+// This regression test asserts that shared-memory mapped files cannot exceed file-system bounds.
+// The original implementation in boost::interprocess, for posix systems, use ftruncate() to set the
+// file size. ftruncate() do not check available size in the file system, so SIGBUS error can occur
+// when reading / writing in the mapped mem.
+TEST_F(SHMTransportTests, memory_bounds)
+{
+    const std::string domain_name("SHMTests");
+    auto shared_mem_manager = SharedMemManager::create(domain_name);
+    auto shm_path = RobustLock::get_file_path("");
+
+    uint64_t max_file_system_free_size;
+    uint64_t physical_mem_size;
+
+#ifndef _MSC_VER // Posix is assumed
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    physical_mem_size = pages * page_size;
+
+    struct statvfs stat_info;
+    ASSERT_TRUE(statvfs(shm_path.c_str(), &stat_info) == 0);
+    max_file_system_free_size = stat_info.f_bavail * stat_info.f_bsize;
+
+#else // Windows
+
+    MEMORYSTATUSEX status;
+    status.dwLength = sizeof(status);
+    GlobalMemoryStatusEx(&status);
+    physical_mem_size = status.ullTotalPhys;
+
+    ULARGE_INTEGER FreeBytesAvailableToCaller;
+    ULARGE_INTEGER TotalNumberOfBytes;
+    ULARGE_INTEGER TotalNumberOfFreeBytes;
+
+    ASSERT_TRUE(GetDiskFreeSpaceEx(shm_path.c_str(), &FreeBytesAvailableToCaller, &TotalNumberOfBytes,
+            &TotalNumberOfFreeBytes));
+
+    max_file_system_free_size = FreeBytesAvailableToCaller.QuadPart;
+
+#endif // ifndef _MSC_VER
+
+    uint64_t mem_size = (std::min)(max_file_system_free_size, physical_mem_size);
+
+    uint32_t allocations;
+    uint32_t allocation_size;
+    uint64_t free_size60 = static_cast<uint64_t>(mem_size * 0.6);
+    uint32_t extra_allocation = 0u;
+
+    if (free_size60 > (std::numeric_limits<uint32_t>::max)())
+    {
+        allocations = static_cast<uint32_t>(free_size60 / (std::numeric_limits<uint32_t>::max)());
+        allocation_size = static_cast<uint32_t>(free_size60 / allocations);
+        extra_allocation = free_size60 % (std::numeric_limits<uint32_t>::max)();
+    }
+    else
+    {
+        allocation_size = static_cast<uint32_t>(free_size60);
+        allocations = 1u;
+    }
+
+    std::vector<std::shared_ptr<SharedMemManager::Segment> > segments;
+
+    auto zero_mem = [&]()
+            {
+                auto buf = segments.back()->alloc_buffer(allocation_size,
+                                std::chrono::steady_clock::now() + std::chrono::milliseconds(100));
+                ASSERT_TRUE(buf != nullptr);
+                memset(buf->data(), 0, buf->size());
+                buf.reset();
+            };
+
+    // Fist allocation must succeed
+    for (uint32_t i = 0; i < allocations; i++)
+    {
+        segments.push_back(shared_mem_manager->create_segment(allocation_size, 1));
+        zero_mem();
+    }
+    if (extra_allocation)
+    {
+        segments.push_back(shared_mem_manager->create_segment(extra_allocation, 1));
+        zero_mem();
+    }
+
+    // The /dev/shm file system is < physical memory => cannot support allocation beyond 100%
+    // Is the default configuration in Linux systems
+    if ( max_file_system_free_size < physical_mem_size )
+    {
+        // Send allocation must fail
+        ASSERT_THROW(
+            for (uint32_t i = 0; i < allocations; i++)
+        {
+            segments.push_back(shared_mem_manager->create_segment(allocation_size, 1));
+            zero_mem();
+        }
+            if (extra_allocation)
+        {
+            segments.push_back(shared_mem_manager->create_segment(extra_allocation, 1));
+            zero_mem();
+        }
+            , std::exception);
+    }
+    else // Allocation beyond 100% physical mem may or may not be supported by virtual-mem and page file
+    {
+        try
+        {
+            for (uint32_t i = 0; i < allocations; i++)
+            {
+                segments.push_back(shared_mem_manager->create_segment(allocation_size, 1));
+                zero_mem();
+            }
+            if (extra_allocation)
+            {
+                segments.push_back(shared_mem_manager->create_segment(extra_allocation, 1));
+                zero_mem();
+            }
+        }
+        catch (const std::exception&)
+        {
+            for (uint32_t i = 0; i < allocations; i++)
+            {
+                segments.push_back(shared_mem_manager->create_segment(allocation_size, 1));
+                zero_mem();
+            }
+            if (extra_allocation)
+            {
+                segments.push_back(shared_mem_manager->create_segment(extra_allocation, 1));
+                zero_mem();
+            }
+        }
+    }
+}
+
 TEST_F(SHMTransportTests, port_listener_dead_recover)
 {
     const std::string domain_name("SHMTests");
 
-    SharedMemManager shared_mem_manager(domain_name);
-    SharedMemGlobal* shared_mem_global = shared_mem_manager.global_segment();
+    auto shared_mem_manager = SharedMemManager::create(domain_name);
+    SharedMemGlobal* shared_mem_global = shared_mem_manager->global_segment();
 
     uint32_t listener1_index;
     auto port1 = shared_mem_global->open_port(0, 1, 1000);
     auto listener1 = port1->create_listener(&listener1_index);
 
-    auto listener2 = shared_mem_manager.open_port(0, 1, 1000)->create_listener();
+    auto listener2 = shared_mem_manager->open_port(0, 1, 1000)->create_listener();
 
     std::atomic<uint32_t> thread_listener2_state(0);
     std::thread thread_listener2([&]
@@ -1137,8 +1271,8 @@ TEST_F(SHMTransportTests, port_listener_dead_recover)
         }
     );
 
-    auto port_sender = shared_mem_manager.open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::Write);
-    auto segment = shared_mem_manager.create_segment(1024, 16);
+    auto port_sender = shared_mem_manager->open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::Write);
+    auto segment = shared_mem_manager->create_segment(1024, 16);
     auto buf = segment->alloc_buffer(1, std::chrono::steady_clock::now() + std::chrono::milliseconds(100));
     ASSERT_TRUE(buf != nullptr);
     memset(buf->data(), 0, buf->size());
@@ -1191,8 +1325,8 @@ TEST_F(SHMTransportTests, empty_cv_mutex_deadlocked_try_push)
 {
     const std::string domain_name("SHMTests");
 
-    SharedMemManager shared_mem_manager(domain_name);
-    SharedMemGlobal* shared_mem_global = shared_mem_manager.global_segment();
+    auto shared_mem_manager = SharedMemManager::create(domain_name);
+    SharedMemGlobal* shared_mem_global = shared_mem_manager->global_segment();
     MockPortSharedMemGlobal port_mocker;
 
     auto global_port = shared_mem_global->open_port(0, 1, 1000);
@@ -1229,9 +1363,9 @@ TEST_F(SHMTransportTests, dead_listener_sender_port_recover)
 {
     const std::string domain_name("SHMTests");
 
-    SharedMemManager shared_mem_manager(domain_name);
-    SharedMemGlobal* shared_mem_global = shared_mem_manager.global_segment();
-    
+    auto shared_mem_manager = SharedMemManager::create(domain_name);
+    SharedMemGlobal* shared_mem_global = shared_mem_manager->global_segment();
+
     shared_mem_global->remove_port(0);
     auto deadlocked_port = shared_mem_global->open_port(0, 1, 1000);
     uint32_t listener_index;
@@ -1242,7 +1376,7 @@ TEST_F(SHMTransportTests, dead_listener_sender_port_recover)
     std::thread thread_wait_deadlock([&]
         {
             MockPortSharedMemGlobal port_mocker;
-            port_mocker.wait_pop_deadlock(*deadlocked_port, *deadlocked_listener, 
+            port_mocker.wait_pop_deadlock(*deadlocked_port, *deadlocked_listener,
                 is_listener_closed, listener_index);
             (void)port_mocker; // Removes an inexplicable warning when compiling with VC(v140 toolset)
         });
@@ -1271,11 +1405,11 @@ TEST_F(SHMTransportTests, port_not_ok_listener_recover)
 {
     const std::string domain_name("SHMTests");
 
-    SharedMemManager shared_mem_manager(domain_name);
-    SharedMemGlobal* shared_mem_global = shared_mem_manager.global_segment();
+    auto shared_mem_manager = SharedMemManager::create(domain_name);
+    SharedMemGlobal* shared_mem_global = shared_mem_manager->global_segment();
 
     shared_mem_global->remove_port(0);
-    auto read_port = shared_mem_manager.open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
+    auto read_port = shared_mem_manager->open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
     auto listener = read_port->create_listener();
 
     std::atomic<uint32_t> stage(0u);
@@ -1293,15 +1427,15 @@ TEST_F(SHMTransportTests, port_not_ok_listener_recover)
 
     // Open the deadlocked port
     auto port = shared_mem_global->open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::Write);
-    auto managed_port = shared_mem_manager.open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::Write);
-    auto data_segment = shared_mem_manager.create_segment(1, 1);
-    
+    auto managed_port = shared_mem_manager->open_port(0, 1, 1000, SharedMemGlobal::Port::OpenMode::Write);
+    auto data_segment = shared_mem_manager->create_segment(1, 1);
+
     MockPortSharedMemGlobal port_mocker;
     port_mocker.set_port_not_ok(*port);
     (void)port_mocker; // Removes an inexplicable warning when compiling with VC(v140 toolset)
 
     while(stage.load() != 1u)
-    { 
+    {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
@@ -1318,20 +1452,20 @@ TEST_F(SHMTransportTests, buffer_recover)
 {
     const std::string domain_name("SHMTests");
 
-    SharedMemManager shared_mem_manager(domain_name);
-    
-    auto segment = shared_mem_manager.create_segment(3,3);
+    auto shared_mem_manager = SharedMemManager::create(domain_name);
 
-    shared_mem_manager.remove_port(1);
-    auto pub_sub1_write = shared_mem_manager.open_port(1, 8, 1000, SharedMemGlobal::Port::OpenMode::Write);
+    auto segment = shared_mem_manager->create_segment(3, 3);
 
-    shared_mem_manager.remove_port(2);
-    auto pub_sub2_write = shared_mem_manager.open_port(2, 8, 1000,SharedMemGlobal::Port::OpenMode::Write);
+    shared_mem_manager->remove_port(1);
+    auto pub_sub1_write = shared_mem_manager->open_port(1, 8, 1000, SharedMemGlobal::Port::OpenMode::Write);
 
-    auto sub1_read = shared_mem_manager.open_port(1, 8, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
+    shared_mem_manager->remove_port(2);
+    auto pub_sub2_write = shared_mem_manager->open_port(2, 8, 1000, SharedMemGlobal::Port::OpenMode::Write);
 
-    auto sub2_read = shared_mem_manager.open_port(2, 8, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
-    
+    auto sub1_read = shared_mem_manager->open_port(1, 8, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
+
+    auto sub2_read = shared_mem_manager->open_port(2, 8, 1000, SharedMemGlobal::Port::OpenMode::ReadExclusive);
+
     bool exit_listeners = false;
 
     uint32_t listener1_sleep_ms = 400u;
@@ -1382,7 +1516,7 @@ TEST_F(SHMTransportTests, buffer_recover)
     // Test 1 (without port overflow)
     uint32_t send_counter = 0u;
     while(listener1_recv_count.load() < 16u)
-    {        
+    {
         {
             // The segment should never overflow
             auto buf = segment->alloc_buffer(1, std::chrono::steady_clock::time_point());
@@ -1402,7 +1536,7 @@ TEST_F(SHMTransportTests, buffer_recover)
     // The slow listener is 4 times slower than the fast one
     ASSERT_LT(listener1_recv_count.load()*3, listener2_recv_count.load());
     ASSERT_GT(listener1_recv_count.load(), listener2_recv_count.load()/5);
-    std::cout << "Test1:" 
+    std::cout << "Test1:"
         << " Listener1_recv_count " << listener1_recv_count.load()
         << " Listener2_recv_count " << listener2_recv_count.load()
         << std::endl;
@@ -1415,7 +1549,7 @@ TEST_F(SHMTransportTests, buffer_recover)
     uint32_t port_overflows1 = 0u;
     uint32_t port_overflows2 = 0u;
     while(listener1_recv_count.load() < 16u)
-    {        
+    {
         {
             // The segment should never overflow
             auto buf = segment->alloc_buffer(1u, std::chrono::steady_clock::time_point());
@@ -1424,7 +1558,7 @@ TEST_F(SHMTransportTests, buffer_recover)
             {
                 port_overflows1++;
             }
-            
+
             if(!pub_sub2_write->try_push(buf))
             {
                 port_overflows2++;
@@ -1446,7 +1580,7 @@ TEST_F(SHMTransportTests, buffer_recover)
     ASSERT_LT(port_overflows2, port_overflows1);
     ASSERT_LT(listener1_recv_count.load(), listener2_recv_count.load());
     ASSERT_GT(send_counter, listener2_recv_count.load());
-    
+
     exit_listeners = true;
 
     {
@@ -1457,6 +1591,108 @@ TEST_F(SHMTransportTests, buffer_recover)
 
     thread_listener1.join();
     thread_listener2.join();
+}
+
+TEST_F(SHMTransportTests, remote_segments_free)
+{
+    const std::string domain_name("SHMTests");
+    uint32_t num_participants = 100;
+
+    std::vector<std::shared_ptr<SharedMemManager> > managers;
+    std::vector<std::shared_ptr<SharedMemManager::Port> > ports;
+    std::vector<std::shared_ptr<SharedMemManager::Segment> > segments;
+    std::vector<std::shared_ptr<SharedMemManager::Listener> > listeners;
+
+    std::cout << "Creating " << num_participants << " SharedMemManagers & respective segments..." << std::endl;
+
+    // Create participants
+    for (uint32_t i = 0; i < num_participants; i++)
+    {
+        managers.push_back(SharedMemManager::create(domain_name));
+        segments.push_back(managers.back()->create_segment(16u, 1u));
+        ports.push_back(managers.back()->open_port(i, num_participants, 1000));
+        listeners.push_back(ports.back()->create_listener());
+    }
+
+    uint64_t segment_mem_size = segments[0]->mem_size();
+
+    std::cout << "segment_mem_size = " << segment_mem_size << std::endl;
+    std::cout << "Each participant send a message to the others " << segment_mem_size << std::endl;
+
+    // Each participant send a message to the others
+    for (uint32_t i = 0; i < num_participants; i++)
+    {
+        auto buf = segments[i]->alloc_buffer(8, std::chrono::steady_clock::now() + std::chrono::milliseconds(100));
+        memset(buf->data(), 0, buf->size());
+
+        for (uint32_t j = 0; j < num_participants; j++)
+        {
+            if (j != i)
+            {
+                ASSERT_TRUE(ports[j]->try_push(buf));
+                ASSERT_TRUE(listeners[j]->pop() != nullptr);
+            }
+        }
+    }
+
+    uint64_t remote_mem_size = segment_mem_size * (num_participants - 1);
+
+    // Each manager has references to all segments from other managers
+    for (uint32_t i = 0; i < num_participants; i++)
+    {
+        ASSERT_EQ(remote_mem_size, managers[i]->segments_mem());
+    }
+
+    std::cout << "Each manager has opened all others remote segments. per manager remote opened mem_size = "
+              << remote_mem_size << std::endl
+              << " Total remote segments in this process = "
+              << (num_participants - 1) * num_participants
+              << std::endl;
+
+    // Release all segments except participant 0
+    for (uint32_t i = 0; i < num_participants; i++)
+    {
+        segments[i].reset();
+    }
+
+    std::cout << "All segments released " << std::endl;
+
+    auto last_mem_size = remote_mem_size;
+
+    // Wait until manager0, detect releases segments
+    uint64_t mem_size;
+    uint32_t num_releases_batches = 0u;
+    while ((mem_size = managers[0]->segments_mem()) != 0u)
+    {
+        if (mem_size != last_mem_size)
+        {
+            std::cout << "manager[0] release detected. remote opened mem_size = " << mem_size << std::endl;
+            last_mem_size = mem_size;
+            num_releases_batches++;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    // Assuming num_participants is big enough for the watchdog to complete the all releases in one period,
+    // several releases batches should be observed.
+    ASSERT_GT(num_releases_batches, 1u);
+
+    std::cout << "Wait for all managers release all remote segments..." << std::endl;
+
+    // Wait until all managers have released remote segments
+    uint64_t total_mem_in_use = 1;
+    while (total_mem_in_use)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+        total_mem_in_use = 0;
+
+        for (uint32_t i = 0; i < num_participants; i++)
+        {
+            total_mem_in_use += managers[i]->segments_mem();
+        }
+    }
 }
 
 /*TEST_F(SHMTransportTests, simple_latency)
@@ -1888,7 +2124,7 @@ TEST_F(SHMTransportTests, dump_file)
         ASSERT_EQ(dump_text.c_str()[310], 10);
         ASSERT_EQ(dump_text.c_str()[311], 10);
     }
-    
+
     std::remove(log_file.c_str());
 }
 
